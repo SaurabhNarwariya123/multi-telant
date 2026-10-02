@@ -6,6 +6,7 @@ export const connectDb = async () => {
     console.log('MongoDB connected');
   } catch (error) {
     console.error(`MongoDB connection failed: ${error.message}`);
+    if (process.env.VERCEL) throw error;
     process.exit(1);
   }
 };

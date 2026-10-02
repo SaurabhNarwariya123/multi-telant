@@ -21,8 +21,22 @@ import aiRoutes from './routes/aiRoutes.js';
 
 const app = express();
 
-app.use(cors({ origin: process.env.CLIENT_URL }));
+const allowedOrigins = (process.env.CLIENT_URL || '').split(',').map((o) => o.trim().replace(/\/$/, '')).filter(Boolean);
+app.use(cors({
+  origin: (origin, cb) => cb(null, !origin || allowedOrigins.includes(origin)),
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 app.use(express.json());
+
+let ready;
+const init = () => (ready ??= connectDb().then(seedSuperAdmin).catch((e) => { ready = undefined; throw e; }));
+
+if (process.env.VERCEL) {
+  app.use(async (req, res, next) => {
+    try { await init(); next(); } catch (error) { next(error); }
+  });
+}
 
 app.use('/api/auth', authRoutes);
 app.use('/api/agencies', agencyRoutes);
@@ -41,15 +55,10 @@ app.use('/api/ai', aiRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
-const start = async () => {
-  try {
-    await connectDb();
-    await seedSuperAdmin();
-    app.listen(process.env.PORT, () => console.log(`Server running on port ${process.env.PORT}`));
-  } catch (error) {
-    console.error(`Server failed to start: ${error.message}`);
-    process.exit(1);
-  }
-};
+if (!process.env.VERCEL) {
+  init()
+    .then(() => app.listen(process.env.PORT, () => console.log(`Server running on port ${process.env.PORT}`)))
+    .catch((error) => { console.error(`Server failed to start: ${error.message}`); process.exit(1); });
+}
 
-start();
+export default app;
